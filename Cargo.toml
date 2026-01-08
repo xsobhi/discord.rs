@@ -1,0 +1,26 @@
+[package]
+name = "discord_rs"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = [
+    "crates/core",
+    "crates/model",
+    "crates/gateway",
+    "crates/http",
+    "crates/cache",
+    "crates/builders",
+    "crates/voice",
+    "crates/sharding",
+    "crates/examples",
+]
+
+[dependencies]
+discord_rs_core = { path = "crates/core" }
+discord_rs_gateway = { path = "crates/gateway" }
+discord_rs_model = { path = "crates/model" }
+discord_rs_http = { path = "crates/http" }
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
