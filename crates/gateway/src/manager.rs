@@ -1,5 +1,6 @@
 use discord_rs_core::{Config, DiscordError, Result, Intents};
 use discord_rs_model::gateway::{GatewayPayload, OpCode, Identify, IdentifyProperties, Hello, Ready};
+use discord_rs_model::Event;
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,6 +10,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, error, info, warn};
 use url::Url;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::sync::mpsc::UnboundedSender;
 
 pub struct GatewayManager {
     config: Arc<Config>,
@@ -16,16 +18,18 @@ pub struct GatewayManager {
     session_id: Option<String>,
     last_sequence: Arc<tokio::sync::Mutex<Option<u64>>>,
     resume_url: Option<String>,
+    event_tx: UnboundedSender<Event>,
 }
 
 impl GatewayManager {
-    pub fn new(config: Arc<Config>, intents: Intents) -> Self {
+    pub fn new(config: Arc<Config>, intents: Intents, event_tx: UnboundedSender<Event>) -> Self {
         Self {
             config,
             intents,
             session_id: None,
             last_sequence: Arc::new(tokio::sync::Mutex::new(None)),
             resume_url: None,
+            event_tx,
         }
     }
 
@@ -121,15 +125,26 @@ impl GatewayManager {
                             self.identify(&tx).await?;
                         }
                         OpCode::Dispatch => {
-                            if let Some(event_name) = payload.t {
-                                if event_name == "READY" {
-                                    let ready: Ready = serde_json::from_value(payload.d.unwrap())
-                                        .map_err(|e| DiscordError::Serialization(e.to_string()))?;
-                                    
-                                    self.session_id = Some(ready.session_id.clone());
-                                    self.resume_url = Some(ready.resume_gateway_url.clone());
-                                    info!("READY! Logged in as {}#{}", ready.user.username, ready.user.discriminator);
-                                    info!("Session ID: {}", ready.session_id);
+                            // Deserialize into Event enum
+                            match serde_json::from_str::<Event>(&text) {
+                                Ok(event) => {
+                                    // Handle internal state updates
+                                    match &event {
+                                        Event::Ready(ready) => {
+                                            self.session_id = Some(ready.session_id.clone());
+                                            self.resume_url = Some(ready.resume_gateway_url.clone());
+                                            info!("READY! Logged in as {}#{}", ready.user.username, ready.user.discriminator);
+                                        }
+                                        _ => {}
+                                    }
+
+                                    // Dispatch to client
+                                    if let Err(e) = self.event_tx.send(event) {
+                                        error!("Failed to dispatch event: {}", e);
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to deserialize event: {} | Text: {}", e, text);
                                 }
                             }
                         }
