@@ -12,6 +12,7 @@ pub mod reaction;
 pub mod message;
 pub mod interaction;
 pub mod event;
+pub mod component;
 
 // Re-export common types
 pub use user::User;
@@ -22,4 +23,5 @@ pub use channel::Channel;
 pub use message::Message;
 pub use interaction::{Interaction, InteractionResponse, InteractionType, InteractionResponseType};
 pub use event::Event;
+pub use component::{Component, ComponentType, Button, ActionRow, SelectMenu};
 pub use discord_rs_core::Snowflake;

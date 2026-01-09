@@ -3,6 +3,7 @@ use serde_json::Value;
 use discord_rs_core::{Intents, Snowflake};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(u8)]
 #[serde(try_from = "u8", into = "u8")]
 pub enum OpCode {
     Dispatch = 0,
@@ -90,30 +91,26 @@ pub struct IdentifyProperties {
     pub device: String,
 }
 
+use crate::guild::UnavailableGuild;
+use crate::user::User; // CurrentUser is basically User, but let's keep it if different fields.
+// Actually CurrentUser in Ready is partial User.
+// Let's keep CurrentUser but make it Clone, Serialize.
+
 #[derive(Debug, Deserialize)]
 pub struct Hello {
     pub heartbeat_interval: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ready {
     pub v: u8,
-    pub user: CurrentUser,
+    pub user: User, // Use full User or re-define? 
+    // The snippet used CurrentUser. Let's use User directly if compatible or make CurrentUser proper.
+    // Ready payload has a User object.
+    // Let's swap CurrentUser for User (it's compatible enough usually).
     pub guilds: Vec<UnavailableGuild>,
     pub session_id: String,
     pub resume_gateway_url: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CurrentUser {
-    pub id: Snowflake,
-    pub username: String,
-    pub discriminator: String,
-    pub bot: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UnavailableGuild {
-    pub id: Snowflake,
-    pub unavailable: bool,
-}
+// Removing local UnavailableGuild and CurrentUser (using User)

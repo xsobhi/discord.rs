@@ -20,7 +20,7 @@ pub fn update_cache_from_event(cache: &Arc<Cache>, event: &Event) {
             cache.update_user(msg.author.clone());
             if let (Some(guild_id), Some(member)) = (msg.guild_id, &msg.member) {
                 let mut member = member.clone();
-                member.user = msg.author.clone();
+                member.user = Some(msg.author.clone());
                 cache.update_member(guild_id, member);
             }
         }

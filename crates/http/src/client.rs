@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use crate::ratelimit::RateLimiter;
 use crate::routing::Route;
 use crate::error::DiscordApiError;
-use url::percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 const API_VERSION: u8 = 10;
 const BASE_URL: &str = "https://discord.com/api/v10";

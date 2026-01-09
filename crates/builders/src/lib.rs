@@ -1,13 +1,15 @@
 pub mod embed;
 pub mod message;
 pub mod interaction;
+pub mod component;
 
 pub use embed::EmbedBuilder;
 pub use message::MessageBuilder;
 pub use interaction::InteractionResponseBuilder;
+pub use component::{ActionRowBuilder, ButtonBuilder, SelectMenuBuilder};
 
 use discord_rs_core::{Context, Snowflake, Result, DiscordError};
-use discord_rs_model::{Message, Interaction, InteractionResponse};
+use discord_rs_model::{Message, Interaction};
 use async_trait::async_trait;
 
 #[async_trait]

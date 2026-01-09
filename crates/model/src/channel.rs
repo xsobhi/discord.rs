@@ -41,6 +41,7 @@ pub struct Channel {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
 #[serde(try_from = "u8", into = "u8")]
 pub enum ChannelType {
     GuildText = 0,

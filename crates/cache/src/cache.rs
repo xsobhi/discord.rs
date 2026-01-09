@@ -37,7 +37,7 @@ impl Cache {
     }
 
     pub fn update_member(&self, guild_id: Snowflake, member: Member) -> Arc<Member> {
-        let user_id = member.user.id;
+        let user_id = member.user.as_ref().map(|u| u.id).expect("Member must have user for caching");
         let arc = Arc::new(member);
         let guild_members = self.members.entry(guild_id).or_insert_with(DashMap::new);
         guild_members.insert(user_id, arc.clone());

@@ -20,6 +20,7 @@ pub struct Sticker {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
 #[serde(try_from = "u8", into = "u8")]
 pub enum StickerType {
     Standard = 1,
@@ -48,6 +49,7 @@ impl From<StickerType> for u8 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
 #[serde(try_from = "u8", into = "u8")]
 pub enum StickerFormatType {
     Png = 1,
@@ -56,7 +58,6 @@ pub enum StickerFormatType {
     Gif = 4,
     Unknown(u8),
 }
-
 impl From<u8> for StickerFormatType {
     fn from(v: u8) -> Self {
         match v {

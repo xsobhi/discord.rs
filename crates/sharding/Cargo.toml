@@ -4,3 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+discord_rs_core = { path = "../core" }
+discord_rs_gateway = { path = "../gateway" }
+discord_rs_model = { path = "../model" }
+discord_rs_http = { path = "../http" }
+async-trait = "0.1"

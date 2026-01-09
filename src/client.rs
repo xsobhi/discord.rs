@@ -1,13 +1,13 @@
 use discord_rs_core::{Config, Intents, Result, Context};
-use discord_rs_gateway::GatewayManager;
+use discord_rs_sharding::ShardManager;
 use discord_rs_http::RestClient;
 use discord_rs_model::{Event, Message, Interaction, gateway::Ready};
 use discord_rs_cache::{Cache, update_cache_from_event};
-use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, broadcast};
 use tracing::{info, error};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 // Type alias for async event handlers
 type Handler<T> = Box<dyn Fn(Context, T) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + Sync>;
@@ -80,25 +80,26 @@ impl Client {
         let config = self.config.clone();
         let cache = self.cache.clone();
         
+        // Broadcast Channel for Collectors (capacity 100)
+        let (broadcast_tx, _) = broadcast::channel::<Event>(100);
+        let broadcaster = Arc::new(broadcast_tx.clone());
+
         // HTTP Client
         let rest = Arc::new(RestClient::new(config.clone())?);
         
         // Context
-        let ctx = Context::new(config.clone(), rest.clone(), cache.clone());
+        let ctx = Context::new(config.clone(), rest.clone(), cache.clone(), broadcaster);
         
         // Gateway Channel
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
         
-        // Start Gateway
-        let gateway_info = rest.get_gateway_bot().await?;
-        info!("Gateway URL: {}", gateway_info.url);
+        // Start Shard Manager
+        let sharder = ShardManager::new(config.clone(), self.intents, event_tx);
         
-        let mut gateway = GatewayManager::new(config.clone(), self.intents, event_tx);
-        
-        // Spawn Gateway Task
+        // Spawn Sharder Task
         tokio::spawn(async move {
-            if let Err(e) = gateway.start(gateway_info.url).await {
-                error!("Gateway fatal error: {}", e);
+            if let Err(e) = sharder.start().await {
+                error!("Shard Manager fatal error: {}", e);
             }
         });
 
@@ -110,6 +111,10 @@ impl Client {
         while let Some(event) = event_rx.recv().await {
             // PHASE 5: Cache-before-dispatch
             update_cache_from_event(&cache, &event);
+            
+            // PHASE 8: Collector Broadcast
+            // We ignore errors here (if no active collectors, send fails, which is fine)
+            let _ = broadcast_tx.send(event.clone());
 
             let ctx_clone = ctx.clone();
             

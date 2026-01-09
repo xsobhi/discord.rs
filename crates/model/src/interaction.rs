@@ -25,6 +25,7 @@ pub struct Interaction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
 #[serde(from = "u8", into = "u8")]
 pub enum InteractionType {
     Ping = 1,
@@ -82,6 +83,7 @@ pub struct ApplicationCommandData {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
 #[serde(from = "u8", into = "u8")]
 pub enum ApplicationCommandType {
     ChatInput = 1,
@@ -152,6 +154,7 @@ pub struct InteractionResponse {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
 #[serde(from = "u8", into = "u8")]
 pub enum InteractionResponseType {
     Pong = 1,

@@ -1,12 +1,21 @@
 pub mod client;
-pub use client::Client;
+pub mod collector;
 
-// Re-exports
-pub use discord_rs_core as core;
-pub use discord_rs_model as model;
-pub use discord_rs_gateway as gateway;
-pub use discord_rs_http as http;
-pub use discord_rs_cache as cache;
-pub use discord_rs_builders as builders;
-pub use discord_rs_voice as voice;
-pub use discord_rs_sharding as sharding;
+pub use client::Client;
+pub use collector::{Collector, CollectorBuilder};
+
+// Ergonomic Re-exports
+pub use discord_rs_core::{Intents, Snowflake, Context};
+pub use discord_rs_model::{User, Message, Guild, Channel, Role, Member, Interaction, Event};
+pub use discord_rs_builders::{MessageBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, SelectMenuBuilder, InteractionResponseBuilder};
+pub use discord_rs_cache::{Cache, ContextCacheExt};
+
+// Internal crates re-exports for advanced users
+pub mod core { pub use discord_rs_core::*; }
+pub mod model { pub use discord_rs_model::*; }
+pub mod gateway { pub use discord_rs_gateway::*; }
+pub mod http { pub use discord_rs_http::*; }
+pub mod cache { pub use discord_rs_cache::*; }
+pub mod builders { pub use discord_rs_builders::*; }
+pub mod voice { pub use discord_rs_voice::*; }
+pub mod sharding { pub use discord_rs_sharding::*; }

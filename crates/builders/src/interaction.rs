@@ -1,4 +1,3 @@
-use crate::message::MessageBuilder;
 use discord_rs_model::interaction::{InteractionResponse, InteractionResponseType, InteractionResponseData};
 use discord_rs_model::embed::Embed;
 

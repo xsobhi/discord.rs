@@ -19,6 +19,7 @@ pub struct GatewayManager {
     last_sequence: Arc<tokio::sync::Mutex<Option<u64>>>,
     resume_url: Option<String>,
     event_tx: UnboundedSender<Event>,
+    shard: Option<[u64; 2]>,
 }
 
 impl GatewayManager {
@@ -30,7 +31,13 @@ impl GatewayManager {
             last_sequence: Arc::new(tokio::sync::Mutex::new(None)),
             resume_url: None,
             event_tx,
+            shard: None,
         }
+    }
+
+    pub fn shard(mut self, shard_id: u64, shard_count: u64) -> Self {
+        self.shard = Some([shard_id, shard_count]);
+        self
     }
 
     pub async fn start(&mut self, mut url: String) -> Result<()> {
@@ -185,7 +192,7 @@ impl GatewayManager {
             },
             compress: None,
             large_threshold: None,
-            shard: None,
+            shard: self.shard,
             presence: None,
             intents: self.intents,
         };
