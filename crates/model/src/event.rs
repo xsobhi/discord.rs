@@ -15,6 +15,7 @@ pub enum Event {
     GuildCreate(Guild),
     GuildUpdate(Guild),
     GuildDelete(serde_json::Value),
+    InteractionCreate(crate::interaction::Interaction),
     // We will add more events as we implement more models/features
     #[serde(other)]
     Unknown,

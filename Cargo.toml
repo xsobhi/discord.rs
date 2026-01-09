@@ -21,6 +21,7 @@ discord_rs_core = { path = "crates/core" }
 discord_rs_gateway = { path = "crates/gateway" }
 discord_rs_model = { path = "crates/model" }
 discord_rs_http = { path = "crates/http" }
+discord_rs_cache = { path = "crates/cache" }
 tokio = { version = "1.0", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"

@@ -12,7 +12,9 @@ use crate::channel::Channel;
 pub struct Message {
     pub id: Snowflake,
     pub channel_id: Snowflake,
+    pub guild_id: Option<Snowflake>,
     pub author: User,
+    pub member: Option<Member>,
     pub content: String,
     pub timestamp: String,
     pub edited_timestamp: Option<String>,
@@ -198,6 +200,26 @@ pub struct MessageReference {
     pub channel_id: Option<Snowflake>,
     pub guild_id: Option<Snowflake>,
     pub fail_if_not_exists: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AllowedMentions {
+    #[serde(default)]
+    pub parse: Vec<AllowedMentionType>,
+    #[serde(default)]
+    pub roles: Vec<Snowflake>,
+    #[serde(default)]
+    pub users: Vec<Snowflake>,
+    #[serde(default)]
+    pub replied_user: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AllowedMentionType {
+    Roles,
+    Users,
+    Everyone,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

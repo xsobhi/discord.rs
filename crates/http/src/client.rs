@@ -1,9 +1,13 @@
 use discord_rs_core::{Config, DiscordError, Result};
 use discord_rs_core::traits::Http;
-use reqwest::{Client as ReqwestClient, header};
+use reqwest::{Client as ReqwestClient, header, Method, StatusCode};
 use serde::Deserialize;
 use std::sync::Arc;
 use async_trait::async_trait;
+use crate::ratelimit::RateLimiter;
+use crate::routing::Route;
+use crate::error::DiscordApiError;
+use url::percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 const API_VERSION: u8 = 10;
 const BASE_URL: &str = "https://discord.com/api/v10";
@@ -12,34 +16,25 @@ const BASE_URL: &str = "https://discord.com/api/v10";
 pub struct RestClient {
     http: ReqwestClient,
     config: Arc<Config>,
+    ratelimiter: Arc<RateLimiter>,
 }
 
 #[async_trait]
 impl Http for RestClient {
     async fn get(&self, path: &str) -> Result<serde_json::Value> {
-        let url = format!("{}{}", BASE_URL, path);
-        let res = self.http.get(&url).send().await
-            .map_err(|e| DiscordError::Http(e.to_string()))?;
-
-        if !res.status().is_success() {
-             return Err(DiscordError::Http(format!("Status: {}", res.status())));
-        }
-
-        res.json::<serde_json::Value>().await
-            .map_err(|e| DiscordError::Serialization(e.to_string()))
+        self.request(Method::GET, path, None, None).await
     }
 
     async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value> {
-        let url = format!("{}{}", BASE_URL, path);
-        let res = self.http.post(&url).json(&body).send().await
-            .map_err(|e| DiscordError::Http(e.to_string()))?;
+        self.request(Method::POST, path, Some(body), None).await
+    }
 
-        if !res.status().is_success() {
-             return Err(DiscordError::Http(format!("Status: {}", res.status())));
-        }
+    async fn patch(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value> {
+        self.request(Method::PATCH, path, Some(body), None).await
+    }
 
-        res.json::<serde_json::Value>().await
-            .map_err(|e| DiscordError::Serialization(e.to_string()))
+    async fn delete(&self, path: &str) -> Result<serde_json::Value> {
+        self.request(Method::DELETE, path, None, None).await
     }
 }
 
@@ -77,19 +72,135 @@ impl RestClient {
             .build()
             .map_err(|e| DiscordError::Http(e.to_string()))?;
 
-        Ok(Self { http, config })
+        Ok(Self {
+            http,
+            config,
+            ratelimiter: Arc::new(RateLimiter::new()),
+        })
     }
 
     pub async fn get_gateway_bot(&self) -> Result<GetGatewayBot> {
-        let url = format!("{}/gateway/bot", BASE_URL);
-        let res = self.http.get(&url).send().await
-            .map_err(|e| DiscordError::Http(e.to_string()))?;
+        let value = self.request(Method::GET, "/gateway/bot", None, None).await?;
+        serde_json::from_value(value).map_err(|e| DiscordError::Serialization(e.to_string()))
+    }
 
-        if !res.status().is_success() {
-             return Err(DiscordError::Http(format!("Status: {}", res.status())));
+    /// Internal request helper with rate limiting and retries
+    pub async fn request(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<serde_json::Value>,
+        reason: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let route = Route::new(method.clone(), path);
+        let url = format!("{}{}", BASE_URL, path);
+
+        loop {
+            self.ratelimiter.await_bucket(&route).await;
+
+            let mut req = self.http.request(method.clone(), &url);
+
+            if let Some(r) = reason {
+                let encoded = utf8_percent_encode(r, NON_ALPHANUMERIC).to_string();
+                if let Ok(hv) = header::HeaderValue::from_str(&encoded) {
+                    req = req.header("X-Audit-Log-Reason", hv);
+                }
+            }
+
+            if let Some(b) = &body {
+                req = req.json(b);
+            }
+
+            let response = req.send().await.map_err(|e| DiscordError::Http(e.to_string()))?;
+            let status = response.status();
+            let headers = response.headers().clone();
+
+            self.ratelimiter.update(&route, &headers).await;
+
+            if status.is_success() {
+                // Handle 204 No Content
+                if status == StatusCode::NO_CONTENT {
+                    return Ok(serde_json::Value::Null);
+                }
+                return response.json::<serde_json::Value>().await
+                    .map_err(|e| DiscordError::Serialization(e.to_string()));
+            }
+
+            if status == StatusCode::TOO_MANY_REQUESTS {
+                let bytes = response.bytes().await.map_err(|e| DiscordError::Http(e.to_string()))?;
+                let body_json: serde_json::Value = serde_json::from_slice(&bytes)
+                    .unwrap_or(serde_json::json!({}));
+                
+                let is_global = body_json.get("global").and_then(|v| v.as_bool()).unwrap_or(false);
+                let retry_after = body_json.get("retry_after").and_then(|v| v.as_f64()).unwrap_or(0.0);
+
+                if is_global {
+                    self.ratelimiter.handle_global_limit(retry_after).await;
+                } else {
+                    // Bucket specific 429. The `update` call above should have set the reset time.
+                    // We just continue loop to wait in `await_bucket`.
+                    // But we might want to log it.
+                    tracing::warn!("Rate limited on {}. Retry after {}s", path, retry_after);
+                }
+                continue;
+            }
+
+            // Error parsing
+            let bytes = response.bytes().await.map_err(|e| DiscordError::Http(e.to_string()))?;
+            if let Ok(api_error) = serde_json::from_slice::<DiscordApiError>(&bytes) {
+                return Err(DiscordError::Http(api_error.to_string()));
+            }
+            
+            return Err(DiscordError::Http(format!("Request failed with status: {}", status)));
+        }
+    }
+
+    pub async fn request_multipart(
+        &self,
+        method: Method,
+        path: &str,
+        form: reqwest::multipart::Form,
+        reason: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let route = Route::new(method.clone(), path);
+        let url = format!("{}{}", BASE_URL, path);
+
+        self.ratelimiter.await_bucket(&route).await;
+
+        let mut req = self.http.request(method.clone(), &url);
+
+        if let Some(r) = reason {
+            let encoded = utf8_percent_encode(r, NON_ALPHANUMERIC).to_string();
+            if let Ok(hv) = header::HeaderValue::from_str(&encoded) {
+                req = req.header("X-Audit-Log-Reason", hv);
+            }
         }
 
-        res.json::<GetGatewayBot>().await
-            .map_err(|e| DiscordError::Serialization(e.to_string()))
+        req = req.multipart(form);
+
+        let response = req.send().await.map_err(|e| DiscordError::Http(e.to_string()))?;
+        let status = response.status();
+        let headers = response.headers().clone();
+
+        self.ratelimiter.update(&route, &headers).await;
+
+        if status.is_success() {
+             if status == StatusCode::NO_CONTENT {
+                return Ok(serde_json::Value::Null);
+            }
+            return response.json::<serde_json::Value>().await
+                .map_err(|e| DiscordError::Serialization(e.to_string()));
+        }
+
+         if status == StatusCode::TOO_MANY_REQUESTS {
+            return Err(DiscordError::RateLimit);
+         }
+
+        let bytes = response.bytes().await.map_err(|e| DiscordError::Http(e.to_string()))?;
+        if let Ok(api_error) = serde_json::from_slice::<DiscordApiError>(&bytes) {
+            return Err(DiscordError::Http(api_error.to_string()));
+        }
+        
+        Err(DiscordError::Http(format!("Request failed with status: {}", status)))
     }
 }
