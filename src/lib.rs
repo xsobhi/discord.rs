@@ -17,5 +17,4 @@ pub mod gateway { pub use discord_rs_gateway::*; }
 pub mod http { pub use discord_rs_http::*; }
 pub mod cache { pub use discord_rs_cache::*; }
 pub mod builders { pub use discord_rs_builders::*; }
-pub mod voice { pub use discord_rs_voice::*; }
 pub mod sharding { pub use discord_rs_sharding::*; }

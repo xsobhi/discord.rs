@@ -67,7 +67,8 @@ impl InteractionReply for Interaction {
     }
 
     async fn follow_up(&self, ctx: &Context, builder: MessageBuilder) -> Result<Box<Message>> {
-        let path = format!("/webhooks/{}/{}/messages", ctx.config.application_id.expect("application_id required for follow-up"), self.token);
+        let app_id = ctx.config.application_id.ok_or(DiscordError::Configuration("application_id required for follow-up".to_string()))?;
+        let path = format!("/webhooks/{}/{}/messages", app_id, self.token);
         let body = builder.build();
         let value = ctx.http.post(&path, body).await?;
         let msg: Message = serde_json::from_value(value)
@@ -76,7 +77,8 @@ impl InteractionReply for Interaction {
     }
 
     async fn edit_reply(&self, ctx: &Context, builder: MessageBuilder) -> Result<Box<Message>> {
-        let path = format!("/webhooks/{}/{}/messages/@original", ctx.config.application_id.expect("application_id required for editing reply"), self.token);
+        let app_id = ctx.config.application_id.ok_or(DiscordError::Configuration("application_id required for editing reply".to_string()))?;
+        let path = format!("/webhooks/{}/{}/messages/@original", app_id, self.token);
         let body = builder.build();
         let value = ctx.http.patch(&path, body).await?;
         let msg: Message = serde_json::from_value(value)
@@ -85,7 +87,8 @@ impl InteractionReply for Interaction {
     }
 
     async fn delete_reply(&self, ctx: &Context) -> Result<()> {
-        let path = format!("/webhooks/{}/{}/messages/@original", ctx.config.application_id.expect("application_id required for deleting reply"), self.token);
+        let app_id = ctx.config.application_id.ok_or(DiscordError::Configuration("application_id required for deleting reply".to_string()))?;
+        let path = format!("/webhooks/{}/{}/messages/@original", app_id, self.token);
         ctx.http.delete(&path).await?;
         Ok(())
     }

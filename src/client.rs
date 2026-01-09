@@ -1,10 +1,10 @@
-use discord_rs_core::{Config, Intents, Result, Context};
+use discord_rs_core::{Config, Intents, Result, Context, Snowflake};
 use discord_rs_sharding::ShardManager;
 use discord_rs_http::RestClient;
 use discord_rs_model::{Event, Message, Interaction, gateway::Ready};
-use discord_rs_cache::{Cache, update_cache_from_event};
+use discord_rs_cache::{Cache, update_cache_from_event, UserManager, GuildManager, ChannelManager};
 use tokio::sync::{mpsc, broadcast};
-use tracing::{info, error};
+use tracing::{info, error, trace};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -16,6 +16,7 @@ pub struct Client {
     config: Arc<Config>,
     intents: Intents,
     cache: Arc<Cache>,
+    rest: Arc<RestClient>,
     // Handlers
     ready_handlers: Vec<Handler<Ready>>,
     message_create_handlers: Vec<Handler<Box<Message>>>,
@@ -24,10 +25,14 @@ pub struct Client {
 
 impl Client {
     pub fn new(token: impl Into<String>) -> Self {
+        let config = Arc::new(Config::new(token));
+        let rest = Arc::new(RestClient::new(config.clone()).expect("Failed to create REST client"));
+        
         Self {
-            config: Arc::new(Config::new(token)),
+            config,
             intents: Intents::empty(),
             cache: Arc::new(Cache::new()),
+            rest,
             ready_handlers: Vec::new(),
             message_create_handlers: Vec::new(),
             interaction_create_handlers: Vec::new(),
@@ -39,8 +44,31 @@ impl Client {
         self
     }
 
+    pub fn application_id(mut self, id: Snowflake) -> Self {
+        let mut config = (*self.config).clone();
+        config.application_id = Some(id);
+        self.config = Arc::new(config);
+        // We need to recreate REST client to propagate config? 
+        // Actually RestClient holds Arc<Config>. If we change the pointer in Client, RestClient has the old one.
+        // We must update RestClient too.
+        self.rest = Arc::new(RestClient::new(self.config.clone()).expect("Failed to create REST client"));
+        self
+    }
+
     pub fn cache(&self) -> Arc<Cache> {
         self.cache.clone()
+    }
+
+    pub fn users(&self) -> UserManager {
+        UserManager::new(self.cache.clone(), self.rest.clone())
+    }
+
+    pub fn guilds(&self) -> GuildManager {
+        GuildManager::new(self.cache.clone(), self.rest.clone())
+    }
+
+    pub fn channels(&self) -> ChannelManager {
+        ChannelManager::new(self.cache.clone(), self.rest.clone())
     }
 
     // --- Event Registration ---
@@ -85,7 +113,7 @@ impl Client {
         let broadcaster = Arc::new(broadcast_tx.clone());
 
         // HTTP Client
-        let rest = Arc::new(RestClient::new(config.clone())?);
+        let rest = self.rest.clone();
         
         // Context
         let ctx = Context::new(config.clone(), rest.clone(), cache.clone(), broadcaster);
@@ -150,7 +178,7 @@ impl Client {
                     });
                 }
                 _ => {
-                    // Unhandled event
+                    trace!("Unhandled event: {:?}", event);
                 }
             }
         }

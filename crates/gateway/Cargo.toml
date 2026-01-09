@@ -13,3 +13,9 @@ futures = "0.3"
 url = "2.4"
 discord_rs_core = { path = "../core" }
 discord_rs_model = { path = "../model" }
+rand = "0.8"
+flate2 = { version = "1.0", optional = true }
+
+[features]
+default = []
+gateway_zlib = ["flate2"]

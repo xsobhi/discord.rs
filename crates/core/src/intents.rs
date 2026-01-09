@@ -3,6 +3,7 @@ use serde::{Serialize, Deserialize};
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+    #[serde(transparent)]
     pub struct Intents: u64 {
         const GUILDS = 1 << 0;
         const GUILD_MEMBERS = 1 << 1;

@@ -11,7 +11,6 @@ members = [
     "crates/http",
     "crates/cache",
     "crates/builders",
-    "crates/voice",
     "crates/sharding",
     "crates/examples",
 ]
@@ -24,8 +23,11 @@ discord_rs_http = { path = "crates/http" }
 discord_rs_cache = { path = "crates/cache" }
 discord_rs_builders = { path = "crates/builders" }
 discord_rs_sharding = { path = "crates/sharding" }
-discord_rs_voice = { path = "crates/voice" }
 tokio = { version = "1.0", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 futures = "0.3"
+
+[features]
+default = []
+gateway_zlib = ["discord_rs_gateway/gateway_zlib"]

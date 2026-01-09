@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use discord_rs_core::{Intents, Snowflake};
+use crate::presence::PresenceUpdate;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
@@ -80,14 +81,17 @@ pub struct Identify {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shard: Option<[u64; 2]>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub presence: Option<Value>,
+    pub presence: Option<PresenceUpdate>,
     pub intents: Intents,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IdentifyProperties {
+    #[serde(rename = "$os")]
     pub os: String,
+    #[serde(rename = "$browser")]
     pub browser: String,
+    #[serde(rename = "$device")]
     pub device: String,
 }
 

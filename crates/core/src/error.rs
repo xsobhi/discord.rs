@@ -22,4 +22,7 @@ pub enum DiscordError {
 
     #[error("Sharding error: {0}")]
     Sharding(String),
+
+    #[error("Configuration error: {0}")]
+    Configuration(String),
 }

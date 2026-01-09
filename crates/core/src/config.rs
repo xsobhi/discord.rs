@@ -9,7 +9,7 @@ pub struct Config {
 impl Config {
     pub fn new(token: impl Into<String>) -> Self {
         Self {
-            token: token.into(),
+            token: token.into().trim().to_string(),
             application_id: None,
         }
     }

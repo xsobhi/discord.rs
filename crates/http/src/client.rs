@@ -162,45 +162,90 @@ impl RestClient {
         form: reqwest::multipart::Form,
         reason: Option<&str>,
     ) -> Result<serde_json::Value> {
+        // Wrap form in a Mutex for the one-shot closure
+        let form = std::sync::Arc::new(std::sync::Mutex::new(Some(form)));
+        
+        self.request_multipart_retryable(
+            method,
+            path,
+            move || {
+                let mut guard = form.lock().unwrap();
+                guard.take().ok_or_else(|| {
+                    DiscordError::Http("Multipart request requires retry but Form is not replayable. Use request_multipart_retryable.".to_string())
+                })
+            },
+            reason
+        ).await
+    }
+
+    pub async fn request_multipart_retryable<F>(
+        &self,
+        method: Method,
+        path: &str,
+        make_form: F,
+        reason: Option<&str>,
+    ) -> Result<serde_json::Value> 
+    where
+        F: Fn() -> Result<reqwest::multipart::Form> + Send + Sync
+    {
         let route = Route::new(method.clone(), path);
         let url = format!("{}{}", BASE_URL, path);
 
-        self.ratelimiter.await_bucket(&route).await;
+        loop {
+            self.ratelimiter.await_bucket(&route).await;
 
-        let mut req = self.http.request(method.clone(), &url);
+            let mut req = self.http.request(method.clone(), &url);
 
-        if let Some(r) = reason {
-            let encoded = utf8_percent_encode(r, NON_ALPHANUMERIC).to_string();
-            if let Ok(hv) = header::HeaderValue::from_str(&encoded) {
-                req = req.header("X-Audit-Log-Reason", hv);
+            if let Some(r) = reason {
+                let encoded = utf8_percent_encode(r, NON_ALPHANUMERIC).to_string();
+                if let Ok(hv) = header::HeaderValue::from_str(&encoded) {
+                    req = req.header("X-Audit-Log-Reason", hv);
+                }
             }
-        }
 
-        req = req.multipart(form);
+            // Rebuild the form
+            let form = make_form()?;
+            req = req.multipart(form);
 
-        let response = req.send().await.map_err(|e| DiscordError::Http(e.to_string()))?;
-        let status = response.status();
-        let headers = response.headers().clone();
+            let response = req.send().await.map_err(|e| DiscordError::Http(e.to_string()))?;
+            let status = response.status();
+            let headers = response.headers().clone();
 
-        self.ratelimiter.update(&route, &headers).await;
+            self.ratelimiter.update(&route, &headers).await;
 
-        if status.is_success() {
-             if status == StatusCode::NO_CONTENT {
-                return Ok(serde_json::Value::Null);
+            if status.is_success() {
+                 if status == StatusCode::NO_CONTENT {
+                    return Ok(serde_json::Value::Null);
+                }
+                return response.json::<serde_json::Value>().await
+                    .map_err(|e| DiscordError::Serialization(e.to_string()));
             }
-            return response.json::<serde_json::Value>().await
-                .map_err(|e| DiscordError::Serialization(e.to_string()));
-        }
 
-         if status == StatusCode::TOO_MANY_REQUESTS {
-            return Err(DiscordError::RateLimit);
-         }
+            if status == StatusCode::TOO_MANY_REQUESTS {
+                let bytes = response.bytes().await.map_err(|e| DiscordError::Http(e.to_string()))?;
+                let body_json: serde_json::Value = serde_json::from_slice(&bytes)
+                    .unwrap_or(serde_json::json!({}));
+                
+                let is_global = body_json.get("global").and_then(|v| v.as_bool()).unwrap_or(false);
+                let retry_after = body_json.get("retry_after").and_then(|v| v.as_f64()).unwrap_or(0.0);
 
-        let bytes = response.bytes().await.map_err(|e| DiscordError::Http(e.to_string()))?;
-        if let Ok(api_error) = serde_json::from_slice::<DiscordApiError>(&bytes) {
-            return Err(DiscordError::Http(api_error.to_string()));
+                if is_global {
+                    self.ratelimiter.handle_global_limit(retry_after).await;
+                } else {
+                    tracing::warn!("Rate limited on multipart {}. Retry after {}s", path, retry_after);
+                    tokio::time::sleep(tokio::time::Duration::from_secs_f64(retry_after)).await;
+                }
+                
+                // Retry loop continues here
+                continue;
+            }
+
+            let bytes = response.bytes().await.map_err(|e| DiscordError::Http(e.to_string()))?;
+            if let Ok(api_error) = serde_json::from_slice::<DiscordApiError>(&bytes) {
+                return Err(DiscordError::Http(api_error.to_string()));
+            }
+            
+            return Err(DiscordError::Http(format!("Request failed with status: {}", status)));
         }
-        
-        Err(DiscordError::Http(format!("Request failed with status: {}", status)))
     }
 }

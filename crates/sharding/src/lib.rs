@@ -1,7 +1,7 @@
 use discord_rs_core::{Config, Intents, Result, DiscordError};
 use discord_rs_gateway::GatewayManager;
 use discord_rs_http::RestClient;
-use discord_rs_model::Event;
+use discord_rs_model::{Event, presence::PresenceUpdate};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{info, error};
@@ -10,6 +10,7 @@ pub struct ShardManager {
     config: Arc<Config>,
     intents: Intents,
     event_tx: mpsc::UnboundedSender<Event>,
+    presence: Option<PresenceUpdate>,
 }
 
 impl ShardManager {
@@ -18,7 +19,13 @@ impl ShardManager {
             config,
             intents,
             event_tx,
+            presence: None,
         }
+    }
+
+    pub fn presence(mut self, presence: PresenceUpdate) -> Self {
+        self.presence = Some(presence);
+        self
     }
 
     pub async fn start(&self) -> Result<()> {
@@ -37,6 +44,7 @@ impl ShardManager {
             let intents = self.intents;
             let event_tx = self.event_tx.clone();
             let url = gateway_info.url.clone();
+            let presence = self.presence.clone();
 
             // Simple coordination: Wait between shards if we hit concurrency limit
             // In a real distributed system, this would be more complex.
@@ -46,11 +54,26 @@ impl ShardManager {
             }
 
             tokio::spawn(async move {
-                let mut manager = GatewayManager::new(config, intents, event_tx)
-                    .shard(shard_id as u64, shard_count as u64);
-                
-                if let Err(e) = manager.start(url).await {
-                    error!("Shard {} failed: {}", shard_id, e);
+                loop {
+                    let mut manager = GatewayManager::new(config.clone(), intents, event_tx.clone())
+                        .shard(shard_id as u64, shard_count as u64);
+                    
+                    if let Some(p) = presence.clone() {
+                        manager = manager.presence(p);
+                    }
+                    
+                    // manager.start now has an internal loop for reconnects.
+                    // If it returns, it implies a fatal error or requested exit.
+                    match manager.start(url.clone()).await {
+                        Ok(_) => {
+                            info!("Shard {} stopped gracefully.", shard_id);
+                            break;
+                        }
+                        Err(e) => {
+                            error!("Shard {} fatal error: {}. Restarting in 5s...", shard_id, e);
+                            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                        }
+                    }
                 }
             });
             
