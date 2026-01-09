@@ -1,11 +1,9 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use discord_rs_core::{Intents, Snowflake};
 use crate::presence::PresenceUpdate;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
-#[serde(try_from = "u8", into = "u8")]
+#[serde(from = "u8", into = "u8")]
 pub enum OpCode {
     Dispatch = 0,
     Heartbeat = 1,
@@ -82,23 +80,20 @@ pub struct Identify {
     pub shard: Option<[u64; 2]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub presence: Option<PresenceUpdate>,
-    pub intents: Intents,
+
+    // IMPORTANT: Discord expects a numeric bitmask here.
+    pub intents: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IdentifyProperties {
-    #[serde(rename = "$os")]
     pub os: String,
-    #[serde(rename = "$browser")]
     pub browser: String,
-    #[serde(rename = "$device")]
     pub device: String,
 }
 
 use crate::guild::UnavailableGuild;
-use crate::user::User; // CurrentUser is basically User, but let's keep it if different fields.
-// Actually CurrentUser in Ready is partial User.
-// Let's keep CurrentUser but make it Clone, Serialize.
+use crate::user::User;
 
 #[derive(Debug, Deserialize)]
 pub struct Hello {
@@ -108,13 +103,8 @@ pub struct Hello {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ready {
     pub v: u8,
-    pub user: User, // Use full User or re-define? 
-    // The snippet used CurrentUser. Let's use User directly if compatible or make CurrentUser proper.
-    // Ready payload has a User object.
-    // Let's swap CurrentUser for User (it's compatible enough usually).
+    pub user: User,
     pub guilds: Vec<UnavailableGuild>,
     pub session_id: String,
     pub resume_gateway_url: String,
 }
-
-// Removing local UnavailableGuild and CurrentUser (using User)
